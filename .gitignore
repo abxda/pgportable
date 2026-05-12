@@ -1,0 +1,39 @@
+# Binarios de salida
+build/
+deploy/
+*.exe
+PgPortable
+PgPortable.app/
+
+# PostgreSQL portable bundle (lo arma cada quien)
+pgsql/
+
+# Datos del cluster (nunca commitear)
+data/
+pgsql.log
+postmaster.pid
+pgportable.lock
+.pgpw.tmp
+
+# Descargas temporales
+_dl/
+
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Wails generados (algunos del template original)
+frontend/dist/
+frontend/node_modules/
+
+# Claude Code session data (no compartir credenciales/contexto privado)
+.claude/

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PostgreSQL Portable</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="c-app">
+
+    <!-- HEADER ------------------------------------------------------- -->
+    <header class="c-header">
+      <div class="c-brand">
+        <span class="c-brand__mark" id="brandIcon" aria-hidden="true"></span>
+        <div>
+          <h1 class="c-brand__title">PostgreSQL Portable</h1>
+          <p class="c-brand__sub">Entorno de alumno · sin instalación · auto-puerto</p>
+        </div>
+      </div>
+      <div class="c-status" id="statusPill" data-state="stopped">
+        <span class="c-status__dot"></span>
+        <span class="c-status__label" id="statusLabel">Detenido</span>
+      </div>
+    </header>
+
+    <!-- CONTROLS ----------------------------------------------------- -->
+    <section class="c-controls">
+      <button class="c-btn c-btn--primary" id="btnStart" type="button">
+        <span class="c-btn__icon" id="iconStart"></span>
+        <span>Iniciar entorno</span>
+      </button>
+      <button class="c-btn c-btn--ghost" id="btnStop" type="button" disabled>
+        <span class="c-btn__icon" id="iconStop"></span>
+        <span>Detener entorno</span>
+      </button>
+    </section>
+
+    <!-- ROW: connection + storage ----------------------------------- -->
+    <section class="c-grid">
+
+      <!-- CONNECTION -->
+      <article class="c-card">
+        <header class="c-card__head">
+          <span class="c-card__icon" id="iconKey"></span>
+          <h2>Conexión</h2>
+        </header>
+
+        <dl class="c-creds">
+          <div data-field="host"><dt>Host</dt><dd><span id="fHost">localhost</span><button class="c-copy" data-copy="host" title="Copiar"></button></dd></div>
+          <div data-field="port"><dt>Puerto</dt><dd><span id="fPort">5432</span><button class="c-copy" data-copy="port" title="Copiar"></button></dd></div>
+          <div data-field="user"><dt>Usuario</dt><dd><span id="fUser">alumno</span><button class="c-copy" data-copy="user" title="Copiar"></button></dd></div>
+          <div data-field="password"><dt>Contraseña</dt><dd><span id="fPass">alumno</span><button class="c-copy" data-copy="password" title="Copiar"></button></dd></div>
+          <div data-field="database"><dt>Base de datos</dt><dd><span id="fDb">postgres</span><button class="c-copy" data-copy="database" title="Copiar"></button></dd></div>
+        </dl>
+
+        <div class="c-field">
+          <label for="connUri">Cadena de conexión (libpq URL)</label>
+          <div class="c-field__row">
+            <input id="connUri" type="text" readonly />
+            <button class="c-btn c-btn--icon" data-copy-input="connUri" type="button" title="Copiar"><span class="ico"></span></button>
+          </div>
+        </div>
+
+        <div class="c-field">
+          <label for="jdbcUrl">URL JDBC (DBeaver JDBC)</label>
+          <div class="c-field__row">
+            <input id="jdbcUrl" type="text" readonly />
+            <button class="c-btn c-btn--icon" data-copy-input="jdbcUrl" type="button" title="Copiar"><span class="ico"></span></button>
+          </div>
+        </div>
+
+        <div class="c-field">
+          <label for="psqlCmd">Comando psql</label>
+          <div class="c-field__row">
+            <input id="psqlCmd" type="text" readonly />
+            <button class="c-btn c-btn--icon" data-copy-input="psqlCmd" type="button" title="Copiar"><span class="ico"></span></button>
+          </div>
+        </div>
+
+        <div class="c-field">
+          <label for="envBlock">Variables de entorno (.env / shell)</label>
+          <div class="c-field__row c-field__row--stack">
+            <textarea id="envBlock" rows="4" readonly></textarea>
+            <button class="c-btn c-btn--icon" data-copy-input="envBlock" type="button" title="Copiar"><span class="ico"></span></button>
+          </div>
+        </div>
+      </article>
+
+      <!-- STORAGE -->
+      <article class="c-card">
+        <header class="c-card__head">
+          <span class="c-card__icon" id="iconDisk"></span>
+          <h2>Almacenamiento físico</h2>
+        </header>
+
+        <dl class="c-creds c-creds--rows">
+          <div><dt>Carpeta de datos</dt><dd><code id="sDataDir">—</code></dd></div>
+          <div><dt>Binarios</dt><dd><code id="sBinDir">—</code></dd></div>
+          <div><dt>Log de Postgres</dt><dd><code id="sLogFile">—</code></dd></div>
+          <div><dt>Tamaño</dt><dd id="sSize">—</dd></div>
+          <div><dt>Archivos</dt><dd id="sFiles">—</dd></div>
+        </dl>
+
+        <div class="c-actions">
+          <button class="c-btn c-btn--ghost" id="btnOpenFolder" type="button">
+            <span class="c-btn__icon" id="iconFolder"></span>
+            <span>Abrir carpeta data</span>
+          </button>
+          <button class="c-btn c-btn--text" id="btnRefreshStorage" type="button">↻ Actualizar</button>
+        </div>
+      </article>
+
+    </section>
+
+    <!-- EXPLORER ----------------------------------------------------- -->
+    <section class="c-card">
+      <header class="c-card__head">
+        <span class="c-card__icon" id="iconTree"></span>
+        <h2>Explorador (bases de datos · esquemas · tablas)</h2>
+        <button class="c-btn c-btn--text" id="btnRefreshTree" type="button">↻ Refrescar</button>
+      </header>
+      <div class="c-tree" id="tree" data-empty="Arranca el entorno para explorar."></div>
+    </section>
+
+    <!-- CONSOLE ------------------------------------------------------ -->
+    <section class="c-card">
+      <header class="c-card__head">
+        <span class="c-card__icon" id="iconTerm"></span>
+        <h2>Consola</h2>
+        <button class="c-btn c-btn--text" id="btnClearLogs" type="button">Limpiar</button>
+      </header>
+      <pre class="c-console" id="logBox" aria-live="polite"></pre>
+    </section>
+
+    <footer class="c-foot" id="toast" aria-live="polite"></footer>
+  </main>
+
+  <script src="/wails/ipc.js"></script>
+  <script src="/wails/runtime.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

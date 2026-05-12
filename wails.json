@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "PgPortable",
+  "outputfilename": "PgPortable",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "Abel Coronado"
+  },
+  "info": {
+    "productName": "PgPortable",
+    "productVersion": "1.0.0",
+    "copyright": "© 2026",
+    "comments": "PostgreSQL portable para alumnos universitarios"
+  }
+}
