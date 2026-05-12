@@ -135,9 +135,12 @@ function applyStatus(s) {
   const pill  = $("statusPill");
   const label = $("statusLabel");
   pill.dataset.state = s.state;
-  label.textContent = (s.state === "running")
+  const baseTxt = (s.state === "running")
     ? `${STR.status.running} · puerto ${s.port}`
     : (STR.status[s.state] || s.state);
+  label.textContent = (s.subPhase && s.state !== "running" && s.state !== "stopped")
+    ? `${baseTxt} · ${s.subPhase}`
+    : baseTxt;
 
   $("fHost").textContent = s.host;
   $("fPort").textContent = s.port;

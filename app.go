@@ -52,11 +52,13 @@ func (a *App) startup(ctx context.Context) {
 		}()
 	}
 
-	// Heartbeat de estado cada segundo (autonomo: detecta cambios externos).
+	// Heartbeat de estado: ritmo rapido durante transiciones, lento en reposo.
+	// 300 ms cuando hay actividad (subPhase != ""), 1 s en estado estable.
 	go func() {
-		t := time.NewTicker(1 * time.Second)
+		t := time.NewTicker(300 * time.Millisecond)
 		defer t.Stop()
 		var last StatusSnapshot
+		slowTicks := 0
 		for {
 			select {
 			case <-a.ctx.Done():
@@ -66,6 +68,16 @@ func (a *App) startup(ctx context.Context) {
 				if cur != last {
 					runtime.EventsEmit(a.ctx, "pg:status", cur)
 					last = cur
+					slowTicks = 0
+				} else {
+					slowTicks++
+				}
+				// Cuando llevamos 3 ticks (~900 ms) sin cambios y no hay subFase,
+				// emitimos un keep-alive cada ~3 s. Suficiente para detectar
+				// cambios externos (p.ej. postgres muerto desde afuera).
+				if slowTicks >= 10 {
+					runtime.EventsEmit(a.ctx, "pg:status", cur)
+					slowTicks = 0
 				}
 			}
 		}
@@ -87,6 +99,7 @@ func (a *App) shutdown(_ context.Context) {
 
 type StatusSnapshot struct {
 	State           string `json:"state"`
+	SubPhase        string `json:"subPhase"`
 	Port            int    `json:"port"`
 	User            string `json:"user"`
 	Password        string `json:"password"`
@@ -128,6 +141,7 @@ func (a *App) GetStatus() StatusSnapshot {
 	}
 	return StatusSnapshot{
 		State:           state,
+		SubPhase:        a.mgr.SubPhase(),
 		Port:            cfg.Port,
 		User:            cfg.User,
 		Password:        cfg.Password,

@@ -32,6 +32,7 @@ export namespace main {
 	}
 	export class StatusSnapshot {
 	    state: string;
+	    subPhase: string;
 	    port: number;
 	    user: string;
 	    password: string;
@@ -53,6 +54,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.state = source["state"];
+	        this.subPhase = source["subPhase"];
 	        this.port = source["port"];
 	        this.user = source["user"];
 	        this.password = source["password"];

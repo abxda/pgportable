@@ -39,14 +39,27 @@ const (
 )
 
 type Manager struct {
-	cfg    Config
-	mu     sync.RWMutex
-	status Status
-	logCh  chan string
+	cfg      Config
+	mu       sync.RWMutex
+	status   Status
+	subPhase string // texto fino que el UI muestra junto al estado (ej. "initdb")
+	logCh    chan string
 }
 
 func NewManager(cfg Config) *Manager {
 	return &Manager{cfg: cfg, logCh: make(chan string, 1024)}
+}
+
+func (m *Manager) SubPhase() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.subPhase
+}
+
+func (m *Manager) setSubPhase(s string) {
+	m.mu.Lock()
+	m.subPhase = s
+	m.mu.Unlock()
 }
 
 func (m *Manager) Config() Config      { return m.cfg }
@@ -66,6 +79,12 @@ func (m *Manager) setStatus(s Status) {
 
 func (m *Manager) log(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
+	// Side log a disco para diagnostico post-mortem (util si la GUI no abre).
+	if f, err := os.OpenFile(filepath.Join(m.cfg.BaseDir, "pgportable.log"),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05.000"), msg)
+		_ = f.Close()
+	}
 	select {
 	case m.logCh <- msg:
 	default:
@@ -218,6 +237,7 @@ func (m *Manager) Initialize(ctx context.Context) error {
 		"--locale=C",
 	}
 	m.log("Inicializando cluster en %s ...", m.cfg.DataDir)
+	m.setSubPhase("initdb")
 	if err := m.runStream(ctx, m.binary("initdb"), args...); err != nil {
 		return fmt.Errorf("initdb fallo: %w", err)
 	}
@@ -281,21 +301,26 @@ func (m *Manager) Start(ctx context.Context) error {
 		"start",
 	}
 	m.log("Arrancando PostgreSQL en puerto %d ...", m.cfg.Port)
+	m.setSubPhase("pg_ctl")
 	if err := m.runStream(ctx, m.binary("pg_ctl"), args...); err != nil {
 		m.setStatus(StatusError)
+		m.setSubPhase("")
 		return err
 	}
 
+	m.setSubPhase("esperando puerto")
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if m.IsRunning() {
 			m.setStatus(StatusRunning)
+			m.setSubPhase("")
 			m.log("PostgreSQL listo en localhost:%d", m.cfg.Port)
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
 	m.setStatus(StatusError)
+	m.setSubPhase("")
 	return fmt.Errorf("PostgreSQL no respondio en 30s")
 }
 
@@ -305,13 +330,16 @@ func (m *Manager) Stop(ctx context.Context) error {
 		return nil
 	}
 	m.setStatus(StatusStopping)
+	m.setSubPhase("pg_ctl stop")
 	args := []string{"-D", m.cfg.DataDir, "-m", "fast", "-w", "stop"}
 	m.log("Deteniendo PostgreSQL ...")
 	if err := m.runStream(ctx, m.binary("pg_ctl"), args...); err != nil {
 		m.setStatus(StatusError)
+		m.setSubPhase("")
 		return err
 	}
 	m.setStatus(StatusStopped)
+	m.setSubPhase("")
 	m.log("PostgreSQL detenido.")
 	return nil
 }
@@ -323,6 +351,13 @@ func (m *Manager) runStream(ctx context.Context, bin string, args ...string) err
 		"LC_ALL=C",
 	)
 	hideWindow(cmd)
+
+	// Critico en Windows: pg_ctl arranca postgres detachado, y los workers heredan
+	// los handles de stdout/stderr de pg_ctl. Tras salir pg_ctl, esas pipes siguen
+	// abiertas mientras viva postgres; nuestros scanners quedarian bloqueados para
+	// siempre. WaitDelay (Go 1.20+) cierra las pipes a la fuerza N segundos despues
+	// de que el proceso principal salga, desbloqueando los scanners.
+	cmd.WaitDelay = 2 * time.Second
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -339,8 +374,14 @@ func (m *Manager) runStream(ctx context.Context, bin string, args ...string) err
 	wg.Add(2)
 	go func() { defer wg.Done(); m.scan(stdout) }()
 	go func() { defer wg.Done(); m.scan(stderr) }()
+
+	// IMPORTANTE: cmd.Wait() ANTES de wg.Wait(). En Windows pg_ctl arranca
+	// postgres detachado y los workers heredan los handles, asi que las pipes
+	// no cierran solas: necesitamos que WaitDelay las cierre. WaitDelay solo
+	// dispara dentro de cmd.Wait(); si esperaramos wg.Wait() primero, deadlock.
+	errWait := cmd.Wait()
 	wg.Wait()
-	return cmd.Wait()
+	return errWait
 }
 
 func (m *Manager) scan(r io.Reader) {
