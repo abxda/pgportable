@@ -254,6 +254,14 @@ func (m *Manager) applyConfig() error {
 		"\n# portable overrides\nlisten_addresses = '127.0.0.1'\nport = %d\n",
 		m.cfg.Port,
 	)
+	// En Linux, los binarios de las distros (Debian/Ubuntu/Fedora) tienen
+	// compilado unix_socket_directories='/var/run/postgresql', carpeta que
+	// solo existe con el paquete oficial instalado y no es escribible por
+	// usuarios sin sudo. Forzamos /tmp (default de upstream PostgreSQL)
+	// para que el deploy portable arranque en cualquier sistema.
+	if runtime.GOOS == "linux" {
+		extra += "unix_socket_directories = '/tmp'\n"
+	}
 	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err

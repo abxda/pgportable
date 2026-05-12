@@ -23,7 +23,19 @@ echo "→ go mod tidy"
 go mod tidy
 
 echo "→ wails build (linux/amd64)"
-wails build -platform linux/amd64 -trimpath
+# Detectar versión de WebKit2GTK disponible para elegir el build tag correcto.
+# Wails v2.12 asume webkit2gtk-4.0 por defecto; en Ubuntu 24.04 (y otras distros
+# modernas) solo está disponible 4.1, lo que requiere `-tags webkit2_41`.
+TAGS=""
+if pkg-config --exists webkit2gtk-4.0 2>/dev/null; then
+  : # default OK
+elif pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+  TAGS="-tags webkit2_41"
+else
+  echo "ERROR: ni webkit2gtk-4.0 ni 4.1 encontrados. Instala libwebkit2gtk-4.1-dev o -4.0-dev." >&2
+  exit 1
+fi
+wails build -platform linux/amd64 -trimpath $TAGS
 
 bin="build/bin/PgPortable"
 [ -f "$bin" ] || { echo "Build failed: $bin missing"; exit 1; }

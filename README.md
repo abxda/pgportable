@@ -3,9 +3,9 @@
 > **PostgreSQL completo en un solo `.exe` — descomprime, doble clic, y a programar.**
 > Sin instalador, sin permisos de administrador, sin tocar tu computadora.
 
-![status](https://img.shields.io/badge/status-Windows%20validated-2bd49c)
-![platform](https://img.shields.io/badge/platform-win%2Famd64-blue)
-![scaffolding](https://img.shields.io/badge/Linux%2FmacOS-scaffolding-orange)
+![status](https://img.shields.io/badge/status-Windows%20%2B%20Linux%20validated-2bd49c)
+![platform](https://img.shields.io/badge/platform-win%2Famd64%20%7C%20linux%2Famd64-blue)
+![scaffolding](https://img.shields.io/badge/macOS-scaffolding-orange)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
@@ -185,8 +185,9 @@ pgportable/
 │   └── app.js             ← ICONS inline (Lucide-style) + STR i18n
 ├── scripts/
 │   ├── build-windows.ps1
-│   ├── build-linux.sh     ← scaffolding
-│   └── build-darwin.sh    ← scaffolding
+│   ├── build-linux.sh                ← validado Ubuntu 24.04
+│   ├── pgsql-portable-linux.sh       ← arma pgsql/ desde el .deb oficial
+│   └── build-darwin.sh               ← scaffolding
 ├── wails.json
 ├── go.mod
 ├── AGENTS.md              ← guía prescriptiva para completar Linux/macOS
@@ -215,9 +216,30 @@ Requiere: **Go 1.22+**, **MSYS2 gcc** en `C:\msys64\mingw64\bin`, **Wails CLI v2
    ```
 4. Tamaño esperado: **~143-147 MB**. Comprime a ZIP → ~50 MB.
 
-### Compilar Linux / macOS
+### Compilar Linux (Ubuntu 24.04 amd64) — validado
 
-Scaffolding listo. Lee [`AGENTS.md`](AGENTS.md) — tiene los comandos exactos para que un agente IA (Claude, Codex, etc.) o tú mismo lo completen en ~10 minutos en la máquina respectiva.
+```bash
+sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev golang-go
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+export PATH="$HOME/go/bin:$PATH"
+
+cd ~/pgportable
+bash scripts/build-linux.sh                    # → build/bin/PgPortable (~13 MB)
+bash scripts/pgsql-portable-linux.sh           # → ./pgsql/ (~47 MB)
+
+mkdir deploy
+cp build/bin/PgPortable deploy/
+cp -r pgsql deploy/
+cp <tu LEEME.txt linux>  deploy/LEEME.txt
+# deploy/ total: ~57 MB
+```
+
+Detalles, troubleshooting y lecciones aprendidas en [`AGENTS.md`](AGENTS.md) §1.
+
+### Compilar macOS — pendiente
+
+Scaffolding listo. [`AGENTS.md`](AGENTS.md) §2 tiene los comandos y las
+lecciones de Linux que aplican (§1.5) para acelerar el trabajo del agente.
 
 ### Flag para devs
 

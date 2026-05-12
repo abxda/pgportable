@@ -1,6 +1,9 @@
 # AGENTS.md — Guía prescriptiva para agentes IA que completen Linux y macOS
 
-> Este proyecto está **terminado y validado en Windows**. Linux y macOS quedan como scaffolding listo para que un agente (Claude / Codex / Cursor / etc.) los complete en pocos minutos en sus respectivas máquinas.
+> Estado actual:
+> - ✅ **Windows** — terminado y validado.
+> - ✅ **Linux (Ubuntu 24.04 amd64)** — terminado y validado. Ver §1.
+> - ⏳ **macOS** — pendiente. Ver §2 y aprovecha las lecciones aprendidas en §1.5.
 >
 > Lee este archivo de arriba a abajo y ejecuta cada bloque. No hay decisiones de diseño pendientes — todo está acotado.
 
@@ -22,17 +25,20 @@
 
 ---
 
-## 1. Linux (Ubuntu/Debian/Fedora/Arch — amd64)
+## 1. Linux (Ubuntu/Debian/Fedora/Arch — amd64) — ✅ COMPLETO
+
+> Validado en Ubuntu 24.04 LTS. Pasos automatizados en `scripts/build-linux.sh`
+> y `scripts/pgsql-portable-linux.sh`. Si tu distro es similar, todo funciona
+> sin tocar código. Si vas a otra distro, lee también §1.5 (lecciones).
 
 ### 1.1 Toolchain
 ```bash
-# Debian / Ubuntu
+# Debian / Ubuntu (24.04 y derivadas)
 sudo apt update
-sudo apt install -y build-essential libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
+sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 
-# Si tu distro solo trae webkit2gtk-4.0 (Ubuntu 22.04 y anteriores):
+# Ubuntu 22.04 y anteriores: usa webkit2gtk-4.0
 sudo apt install -y libwebkit2gtk-4.0-dev
-# y agrega `-tags webkit2_40` al wails build de abajo.
 
 # Fedora
 sudo dnf install -y gcc gtk3-devel webkit2gtk4.1-devel
@@ -41,77 +47,119 @@ sudo dnf install -y gcc gtk3-devel webkit2gtk4.1-devel
 sudo pacman -S --needed base-devel gtk3 webkit2gtk
 ```
 
+`scripts/build-linux.sh` autodetecta `webkit2gtk-4.0` vs `4.1` y aplica el
+build tag correcto (`-tags webkit2_41` cuando solo está 4.1).
+
 ### 1.2 Go + Wails CLI
 ```bash
-# Go 1.22+ (descarga de go.dev si tu distro tiene una versión vieja)
-go version   # debe decir 1.22 o superior
-
+# Go 1.22+
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 export PATH="$HOME/go/bin:$PATH"
-wails doctor    # debe pasar todos los checks
+wails version    # v2.12.0
+# Nota: `wails doctor` puede reportar "libwebkit Not Found" en Ubuntu 24.04;
+# el chequeo busca el nombre 4.0. Es un falso negativo — el build funciona igual.
 ```
 
 ### 1.3 Compilar el binario
 ```bash
-cd ~/pgportable    # clon del repo
-chmod +x scripts/build-linux.sh
-./scripts/build-linux.sh
-# → build/bin/PgPortable
+cd ~/pgportable
+bash scripts/build-linux.sh
+# → build/bin/PgPortable (≈13 MB)
 ```
 
-### 1.4 Conseguir los binarios portables de PostgreSQL 17 para Linux
+### 1.4 Armar pgsql/ portable de PostgreSQL 17
 
-EnterpriseDB **no ofrece** tarballs portables oficiales para Linux. Hay dos rutas:
+Hay un script reproducible que descarga el `.deb` oficial, extrae los binarios
+y los reorganiza al layout correcto:
 
-**Ruta A — Construir desde el .deb/.rpm oficial (recomendada)**
 ```bash
-# Descargar el .deb de PostgreSQL 17 (Ubuntu 22.04 ejemplo)
-wget https://apt.postgresql.org/pub/repos/apt/pool/main/p/postgresql-17/postgresql-17_17.9-1.pgdg22.04+1_amd64.deb
-
-# Extraer SIN instalar
-dpkg-deb -x postgresql-17_17.9-1.pgdg22.04+1_amd64.deb extracted/
-
-# El árbol relevante queda en: extracted/usr/lib/postgresql/17/
-# Reorganizar a la estructura que espera nuestro código:
-mkdir -p pgsql/{bin,lib,share}
-cp -r extracted/usr/lib/postgresql/17/bin/*       pgsql/bin/
-cp -r extracted/usr/lib/x86_64-linux-gnu/*        pgsql/lib/  # solo lo necesario; ver abajo
-cp -r extracted/usr/share/postgresql/17/*         pgsql/share/
-
-# Test
-./pgsql/bin/initdb --version    # debe decir initdb (PostgreSQL) 17.x
+bash scripts/pgsql-portable-linux.sh
+# → ./pgsql/  (≈47 MB)
 ```
 
-⚠️ Las dependencias de glibc/libicu/libssl pueden ser un dolor en Linux. Si el target es **Ubuntu 22.04 LTS** (común en estudiantes), construye el deploy ahí mismo y prueba que los `*.so` necesarios estén dentro de `pgsql/lib/` o sean parte de la base de Ubuntu 22.04. Para detectarlos:
-```bash
-ldd pgsql/bin/postgres | grep "not found"
-```
+Por defecto baja PostgreSQL 17.9 para `pgdg24.04`. Para otra versión:
+`bash scripts/pgsql-portable-linux.sh 17.9 22.04`.
 
-**Ruta B — Usar `pgsql-tools` portable de un tercero (Bitnami / Postgres.app-style)**
-Si la ruta A es muy frágil, busca un tarball portable mantenido por terceros o construye con Docker el binario estático.
+### 1.5 Lecciones aprendidas (importante para macOS y otras distros)
 
-### 1.5 Armar deploy/
+Estos son los **gotchas** que se descubrieron al portar a Linux. La mayoría
+también aplican a macOS si usas binarios estilo Homebrew/Postgres.app.
+
+1. **Layout nativo, no plano.** Los binarios de Postgres usan `find_my_exec()`
+   para resolver `share/`. Si están compilados con `--prefix=/usr` (Debian/
+   Homebrew), buscan share en `<bindir>/../../share/postgresql/17`. Por eso
+   el árbol final NO es plano (`pgsql/{bin,lib,share}`) sino:
+   ```
+   pgsql/
+     bin/                     ← wrappers shell que el código Go invoca
+     lib/postgresql/17/bin/   ← binarios reales
+     lib/postgresql/17/lib/   ← extensiones .so + libpq
+     share/postgresql/17/     ← share data
+   ```
+   Los wrappers en `pgsql/bin/` hacen `exec` al binario real → reemplazan el
+   proceso → `find_my_exec` ve la ubicación real y resuelve share/ correcto.
+   Sin esto, `initdb` falla con `"/usr/share/postgresql/17/postgres.bki does
+   not exist"`.
+
+2. **`PGSHAREDIR` NO funciona como esperarías.** `initdb` regenera el
+   `postgresql.conf` con los defaults compilados en el binario, ignorando la
+   env var. La única salida es el layout nativo del punto 1, o pasar `-L
+   sharedir` manualmente (no escalable).
+
+3. **`unix_socket_directories` por defecto = `/var/run/postgresql`.** Los
+   `.deb` Debian/Ubuntu compilan ese path como default. La carpeta solo
+   existe instalando el paquete oficial postgresql y no es escribible sin
+   sudo. **Fix ya aplicado**: `db_manager.go::applyConfig()` añade
+   `unix_socket_directories = '/tmp'` cuando `runtime.GOOS == "linux"`.
+   En macOS los binarios de Postgres.app/Homebrew compilan default `/tmp`,
+   así que el fix Linux-only no aplica — pero verifica con `postgres -C
+   unix_socket_directories` antes de descartar.
+
+4. **`libpq.so.5` del sistema es vieja.** Ubuntu 24.04 trae libpq 16.x, sin
+   `PQchangePassword`. Si los binarios de `psql` 17 cargan esa libpq, fallan
+   con `undefined symbol`. Solución: incluir `libpq.so.5` 17+ en
+   `pgsql/lib/postgresql/17/lib/` y aplicar `rpath = '$ORIGIN/../lib'` en los
+   binarios reales con `patchelf`. El script ya lo hace.
+
+5. **No `LD_LIBRARY_PATH` ni `DYLD_LIBRARY_PATH` en Go.** El código
+   `db_manager.go` no inyecta esas vars. Toda la portabilidad depende del
+   `rpath` correcto en los binarios. Si en macOS necesitas ajustar rutas
+   dylib, usa `install_name_tool -change` o `install_name_tool -add_rpath`.
+
+6. **Cambio chiquito al código Go (justificado).** Solo se añadió el `if
+   runtime.GOOS == "linux"` mencionado en el punto 3. Cero impacto en
+   Windows o macOS. Si necesitas algo análogo en Darwin, agrega otro `if`
+   bajo el mismo patrón.
+
+### 1.6 Armar deploy/
 ```bash
 mkdir deploy
 cp build/bin/PgPortable deploy/PgPortable
 cp -r pgsql              deploy/pgsql
-cp LEEME.txt             deploy/LEEME.txt   # adapta para Linux (ver §3)
+cp LEEME.txt             deploy/LEEME.txt   # versión Linux (ver §3)
 chmod +x deploy/PgPortable
 ```
 
-### 1.6 Validación
+### 1.7 Validación
 ```bash
 cd deploy
 ./PgPortable --autostart &
-sleep 15
-psql -h localhost -p 5432 -U alumno -d postgres -c "SELECT version();"
-# debe responder PostgreSQL 17.x on x86_64-linux
-pkill PgPortable
+sleep 5
+PGPASSWORD=alumno psql -h localhost -p 5432 -U alumno -d postgres -c "SELECT version();"
+# debe responder PostgreSQL 17.x on x86_64-pc-linux-gnu
+pkill -TERM -f PgPortable    # cierra GUI → manager detiene postgres limpio
 ```
+
+Single-instance: ejecutar dos veces seguidas; el segundo debe imprimir
+`"Ya está corriendo otra instancia... PID NNN"` y salir.
 
 ---
 
-## 2. macOS (arm64 Apple Silicon / amd64 Intel)
+## 2. macOS (arm64 Apple Silicon / amd64 Intel) — ⏳ pendiente
+
+> Antes de empezar lee §1.5 (Lecciones aprendidas en Linux). Los puntos 1, 2,
+> 4 y 5 aplican casi 1:1 a macOS. Punto 3 (`unix_socket_directories`) NO
+> aplica si usas Postgres.app pero SÍ podría aplicar con Homebrew.
 
 ### 2.1 Toolchain
 ```bash
@@ -156,8 +204,32 @@ install_name_tool -change ...   # complicado
 **Ruta B — Postgres.app (universal, mejor opción)**
 - Descargar Postgres.app desde https://postgresapp.com/
 - Dentro del .app: `Contents/Versions/17/` contiene bin/ lib/ share/
-- Copiar a `pgsql/`
-- Es universal binary (arm64 + amd64), portable, sin rpaths externos.
+- Es universal binary (arm64 + amd64), portable, con `@loader_path` en los
+  rpaths internos → no necesitas `install_name_tool` ni patchelf.
+- **Layout sugerido (mismo principio que Linux, ver §1.5 punto 1):**
+  ```
+  pgsql/
+    bin/                       ← wrappers shell exec a binarios reales
+    lib/postgresql/17/bin/
+    lib/postgresql/17/lib/
+    share/postgresql/17/
+  ```
+  Si Postgres.app ya trae `share/postgresql/17/postgres.bki` en una ruta
+  consistente con sus binarios, puedes simplificar el layout — verifica con:
+  ```bash
+  /Applications/Postgres.app/Contents/Versions/17/bin/initdb -D /tmp/test
+  ```
+  Si funciona desde su ubicación original, copiar el árbol tal cual a `pgsql/`
+  debería bastar. Si falla, replica el layout nativo Debian/Linux.
+
+- Verifica también `unix_socket_directories`:
+  ```bash
+  /Applications/Postgres.app/Contents/Versions/17/bin/postgres -C unix_socket_directories
+  ```
+  Si responde `/tmp` no necesitas tocar nada. Si responde una ruta absoluta
+  que no es escribible (poco probable en Postgres.app), añade un `if
+  runtime.GOOS == "darwin"` en `db_manager.go::applyConfig()` siguiendo el
+  patrón Linux.
 
 ### 2.4 Armar deploy/
 ```bash
